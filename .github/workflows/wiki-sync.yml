@@ -80,7 +80,10 @@ jobs:
             echo "::notice::Wiki repository is empty; creating the initial commit."
           fi
 
-          rsync -a --delete --exclude '.git' .wiki-build/ "$work"/
+          # --checksum because rsync's default size+mtime quick check misses
+          # _Footer.md: it differs only by a fixed-length commit SHA, so its size
+          # never changes, and the build and clone often land in the same second.
+          rsync -a --checksum --delete --exclude '.git' .wiki-build/ "$work"/
 
           cd "$work"
           git config user.name  "github-actions[bot]"
