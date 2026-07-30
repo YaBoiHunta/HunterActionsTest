@@ -52,15 +52,21 @@ jobs:
           set -euo pipefail
 
           if [ "$USING_PAT" != "true" ]; then
-            echo "::warning::WIKI_TOKEN is not set, falling back to GITHUB_TOKEN. Wiki pushes are rejected for GITHUB_TOKEN on some accounts; if this step fails with 403, run 'gh secret set WIKI_TOKEN' with a PAT that has repo scope."
+            echo "::warning::WIKI_TOKEN is not set, falling back to GITHUB_TOKEN. Wiki pushes are rejected for GITHUB_TOKEN on some accounts, reported as either 403 or a misleading 'Repository not found'. If this step fails on access, run 'gh secret set WIKI_TOKEN' with a PAT that has repo scope."
           fi
 
           wiki_url="https://x-access-token:${WIKI_TOKEN}@github.com/${REPO}.wiki.git"
           work="$(mktemp -d)"
 
-          # A wiki has no commits until its first page exists, and depending on
-          # age it may not have a backing repo at all. Treat "no commit to build
-          # on" as the bootstrap case either way.
+          # Enabling the wiki does not create its backing git repo. GitHub only
+          # creates it when the first page is saved in the web UI, and there is
+          # no API to do that, so this cannot be automated away.
+          if ! git ls-remote "$wiki_url" >/dev/null 2>&1; then
+            echo "::error::The wiki for ${REPO} has no backing git repository yet. Open https://github.com/${REPO}/wiki, click 'Create the first page', and save it (any content, it is overwritten by this workflow). Then re-run this workflow. If the wiki tab is missing entirely, enable it with 'gh repo edit --enable-wiki'."
+            exit 1
+          fi
+
+          # An existing wiki can still be empty if every page was deleted.
           if git clone --depth 1 "$wiki_url" "$work" 2>/dev/null \
              && git -C "$work" rev-parse HEAD >/dev/null 2>&1; then
             bootstrap=false
@@ -71,7 +77,7 @@ jobs:
             mkdir -p "$work"
             git -C "$work" init -q
             git -C "$work" remote add origin "$wiki_url"
-            echo "::notice::Wiki has no pages yet; creating the initial commit."
+            echo "::notice::Wiki repository is empty; creating the initial commit."
           fi
 
           rsync -a --delete --exclude '.git' .wiki-build/ "$work"/
