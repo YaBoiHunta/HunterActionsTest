@@ -57,6 +57,21 @@ Three pages are produced from the page list rather than from any source file:
 This is what makes the wiki grow on its own. Adding a Markdown file is enough to get
 it indexed, linked, and navigable.
 
+## Backlinks
+
+Resolving a link already tells the generator which page points at which, so the
+reverse of that graph comes for free. Every page ends with a **Referenced by** list
+of the documents that link to it, which is what keeps a growing pile of files
+readable as a connected set rather than a flat index.
+
+A page that nothing links to is an orphan, and orphans get their own section on the
+generated `Home` page. Only links written in real documents count toward this;
+`Home` and `_Sidebar` link to everything, so counting generated navigation would
+mean no page was ever an orphan.
+
+Set `"backlinks": false` in [`wiki.config.json`](../../wiki.config.json) to turn the
+whole feature off.
+
 ## One-way by design
 
 The sync deletes wiki pages that no longer have a source file, which means the

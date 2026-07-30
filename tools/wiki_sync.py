@@ -34,6 +34,7 @@ DEFAULT_CONFIG = {
     "home_title": "Knowledge Base",
     "home_intro": "",
     "recent_count": 10,
+    "backlinks": True,
 }
 
 # Characters that are illegal in Windows filenames or that break wiki page URLs.
@@ -71,6 +72,7 @@ class Page:
     body: str
     meta: dict
     updated: str | None = None
+    rendered_body: str = ""
     rendered: str = ""
 
 
@@ -287,8 +289,12 @@ class LinkRewriter:
         self.report = report
         self.blob_base = f"https://github.com/{repo}/blob/{branch}"
         self.raw_base = f"https://raw.githubusercontent.com/{repo}/{branch}"
+        # source path -> wiki page names it links to, collected while rewriting
+        # so backlinks cost nothing extra to compute.
+        self.edges: dict[str, set[str]] = {}
 
     def rewrite_document(self, source: str, text: str) -> str:
+        self.edges.setdefault(source, set())
         lines_out: list[str] = []
         fence: tuple[str, int] | None = None
         for line in text.split("\n"):
@@ -375,6 +381,7 @@ class LinkRewriter:
 
         page = self._lookup_page(resolved)
         if page is not None:
+            self.edges.setdefault(source, set()).add(page.name)
             return f"{page.name}{suffix}"
 
         if resolved in self.tracked_files:
@@ -488,26 +495,60 @@ def build_pages(root: Path, sources: list[str], report: Report) -> list[Page]:
     return pages
 
 
+def compute_backlinks(pages: list[Page], edges: dict[str, set[str]]) -> dict[str, set[str]]:
+    """Invert the link graph: page name -> names of pages that link to it.
+
+    Only links written in source documents count. Home and _Sidebar link to
+    everything, so counting generated navigation would mean nothing is ever an
+    orphan.
+    """
+    by_source = {page.source: page for page in pages}
+    backlinks: dict[str, set[str]] = {}
+    for source, targets in edges.items():
+        origin = by_source.get(source)
+        if origin is None:
+            continue
+        for target in targets:
+            if target != origin.name:
+                backlinks.setdefault(target, set()).add(origin.name)
+    return backlinks
+
+
 def render_pages(
     pages: list[Page],
     root: Path,
     repo: str,
     branch: str,
     report: Report,
-) -> None:
+    show_backlinks: bool = True,
+) -> dict[str, set[str]]:
     by_source = {page.source: page for page in pages}
     rewriter = LinkRewriter(by_source, all_tracked_files(root), repo, branch, report)
     dates = git_last_modified(root)
 
+    # Every document must be rewritten before any page is finalised, because a
+    # page's backlinks depend on documents rendered after it.
     for page in pages:
         page.updated = dates.get(page.source) or _mtime_iso(root / page.source)
-        rewritten = rewriter.rewrite_document(page.source, page.body).strip("\n")
+        page.rendered_body = rewriter.rewrite_document(page.source, page.body).strip("\n")
+
+    backlinks = compute_backlinks(pages, rewriter.edges) if show_backlinks else {}
+    by_name = {page.name: page for page in pages}
+
+    for page in pages:
         banner = (
             f"> Auto-generated from "
             f"[`{page.source}`](https://github.com/{repo}/blob/{branch}/{_url_quote(page.source)})"
             f"{_updated_suffix(page.updated)}. Edits made here will be overwritten."
         )
-        page.rendered = f"{banner}\n\n{rewritten}\n"
+        sections = [banner, "", page.rendered_body]
+        referrers = sorted(backlinks.get(page.name, ()), key=lambda n: by_name[n].title.lower())
+        if referrers:
+            links = ", ".join(f"[{by_name[name].title}]({name})" for name in referrers)
+            sections += ["", "---", "", f"**Referenced by:** {links}"]
+        page.rendered = "\n".join(sections) + "\n"
+
+    return backlinks
 
 
 def _updated_suffix(updated: str | None) -> str:
@@ -544,7 +585,13 @@ def group_pages(pages: list[Page]) -> list[tuple[str, list[Page]]]:
     return sorted(groups.items(), key=lambda kv: (kv[0] == "Root", kv[0].lower()))
 
 
-def render_home(pages: list[Page], config: dict, repo: str, branch: str) -> str:
+def render_home(
+    pages: list[Page],
+    config: dict,
+    repo: str,
+    branch: str,
+    backlinks: dict[str, set[str]] | None = None,
+) -> str:
     lines = [f"# {config['home_title']}", ""]
     intro = str(config.get("home_intro") or "").strip()
     if intro:
@@ -575,6 +622,20 @@ def render_home(pages: list[Page], config: dict, repo: str, branch: str) -> str:
         for page in items:
             lines.append(f"- [{page.title}]({page.name}) &mdash; `{page.source}`")
         lines.append("")
+
+    if backlinks is not None:
+        orphans = [p for p in pages if not backlinks.get(p.name)]
+        if orphans and len(orphans) != len(pages):
+            lines += [
+                "## Not linked from anywhere",
+                "",
+                "These pages are only reachable from this index. Linking to them "
+                "from a related document makes them easier to find.",
+                "",
+            ]
+            for page in sorted(orphans, key=lambda p: p.title.lower()):
+                lines.append(f"- [{page.title}]({page.name}) &mdash; `{page.source}`")
+            lines.append("")
 
     total = len(pages)
     lines.append(f"_{total} page{'s' if total != 1 else ''} generated from Markdown in the repository._")
@@ -662,13 +723,14 @@ def main(argv: list[str] | None = None) -> int:
 
         sources = collect_files(root, config)
         pages = build_pages(root, sources, report)
-        render_pages(pages, root, repo, branch, report)
+        show_backlinks = config.get("backlinks", True) is not False
+        backlinks = render_pages(pages, root, repo, branch, report, show_backlinks)
     except WikiSyncError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
     files = {f"{page.name}.md": page.rendered for page in pages}
-    files["Home.md"] = render_home(pages, config, repo, branch)
+    files["Home.md"] = render_home(pages, config, repo, branch, backlinks if show_backlinks else None)
     files["_Sidebar.md"] = render_sidebar(pages, config)
     files["_Footer.md"] = render_footer(repo, branch, (run_git(["rev-parse", "HEAD"], root) or "").strip() or None)
 
