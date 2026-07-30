@@ -1,0 +1,98 @@
+name: Sync docs to wiki
+
+# Mirrors every Markdown file in the repository into the GitHub Wiki.
+#
+# Authentication: the default GITHUB_TOKEN is refused by *.wiki.git on many
+# accounts even with contents:write, so a WIKI_TOKEN secret (a PAT with repo
+# scope) is preferred when present. Set one with:
+#   gh secret set WIKI_TOKEN
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '**.md'
+      - 'wiki.config.json'
+      - 'tools/wiki_sync.py'
+      - '.github/workflows/wiki-sync.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: wiki-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          # Full history so the generator can date each page from git log.
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Build wiki pages
+        run: python tools/wiki_sync.py --out .wiki-build --branch "${{ github.ref_name }}"
+
+      - name: Push to wiki
+        env:
+          WIKI_TOKEN: ${{ secrets.WIKI_TOKEN || secrets.GITHUB_TOKEN }}
+          USING_PAT: ${{ secrets.WIKI_TOKEN != '' }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          if [ "$USING_PAT" != "true" ]; then
+            echo "::warning::WIKI_TOKEN is not set, falling back to GITHUB_TOKEN. Wiki pushes are rejected for GITHUB_TOKEN on some accounts; if this step fails with 403, run 'gh secret set WIKI_TOKEN' with a PAT that has repo scope."
+          fi
+
+          wiki_url="https://x-access-token:${WIKI_TOKEN}@github.com/${REPO}.wiki.git"
+          work="$(mktemp -d)"
+
+          # A wiki has no commits until its first page exists, and depending on
+          # age it may not have a backing repo at all. Treat "no commit to build
+          # on" as the bootstrap case either way.
+          if git clone --depth 1 "$wiki_url" "$work" 2>/dev/null \
+             && git -C "$work" rev-parse HEAD >/dev/null 2>&1; then
+            bootstrap=false
+            echo "Cloned existing wiki."
+          else
+            bootstrap=true
+            rm -rf "$work"
+            mkdir -p "$work"
+            git -C "$work" init -q
+            git -C "$work" remote add origin "$wiki_url"
+            echo "::notice::Wiki has no pages yet; creating the initial commit."
+          fi
+
+          rsync -a --delete --exclude '.git' .wiki-build/ "$work"/
+
+          cd "$work"
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+
+          if git diff --cached --quiet; then
+            echo "Wiki is already up to date."
+            exit 0
+          fi
+
+          git commit -q -m "Sync wiki from ${REPO}@${SHA:0:7}"
+
+          if [ "$bootstrap" = "true" ]; then
+            # Wiki repos are created with master, but do not assume it.
+            git push -q --force origin HEAD:master || git push -q --force origin HEAD:main
+          else
+            git push -q origin HEAD
+          fi
+
+          echo "Pushed wiki update: https://github.com/${REPO}/wiki"

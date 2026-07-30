@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="180" viewBox="0 0 760 180" role="img" aria-label="Markdown in the repository flows through a GitHub Action into the wiki">
+  <rect width="760" height="180" rx="12" fill="#f6f8fa"/>
+
+  <g font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif">
+    <rect x="28" y="46" width="180" height="88" rx="10" fill="#ffffff" stroke="#d0d7de" stroke-width="2"/>
+    <text x="118" y="80" text-anchor="middle" font-size="16" font-weight="600" fill="#1f2328">Repository</text>
+    <text x="118" y="102" text-anchor="middle" font-size="13" fill="#656d76">Markdown files</text>
+    <text x="118" y="120" text-anchor="middle" font-size="12" fill="#656d76">docs/, src/, anywhere</text>
+
+    <rect x="290" y="46" width="180" height="88" rx="10" fill="#ffffff" stroke="#0969da" stroke-width="2"/>
+    <text x="380" y="80" text-anchor="middle" font-size="16" font-weight="600" fill="#0969da">GitHub Action</text>
+    <text x="380" y="102" text-anchor="middle" font-size="13" fill="#656d76">wiki_sync.py</text>
+    <text x="380" y="120" text-anchor="middle" font-size="12" fill="#656d76">flatten + rewrite links</text>
+
+    <rect x="552" y="46" width="180" height="88" rx="10" fill="#ffffff" stroke="#1a7f37" stroke-width="2"/>
+    <text x="642" y="80" text-anchor="middle" font-size="16" font-weight="600" fill="#1a7f37">Wiki</text>
+    <text x="642" y="102" text-anchor="middle" font-size="13" fill="#656d76">Home + _Sidebar</text>
+    <text x="642" y="120" text-anchor="middle" font-size="12" fill="#656d76">one page per document</text>
+
+    <text x="380" y="26" text-anchor="middle" font-size="13" fill="#656d76">push to main touching **.md</text>
+  </g>
+
+  <g stroke="#8c959f" stroke-width="2" fill="none" marker-end="url(#arrow)">
+    <path d="M212 90 H 284"/>
+    <path d="M474 90 H 546"/>
+  </g>
+
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#8c959f"/>
+    </marker>
+  </defs>
+</svg>

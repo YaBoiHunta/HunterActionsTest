@@ -1,0 +1,5 @@
+# Local output of tools/wiki_sync.py
+.wiki-build/
+
+__pycache__/
+*.py[cod]

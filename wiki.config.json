@@ -1,0 +1,13 @@
+{
+  "include": ["**/*.md"],
+  "exclude": [
+    "README.md",
+    ".github/**",
+    "node_modules/**",
+    ".wiki-build/**",
+    ".git/**"
+  ],
+  "home_title": "HunterActionsTest Knowledge Base",
+  "home_intro": "Auto-generated from Markdown in the repository. Edit the source files, not these pages.",
+  "recent_count": 10
+}
